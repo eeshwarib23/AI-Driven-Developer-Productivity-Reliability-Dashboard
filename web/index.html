@@ -1,0 +1,121 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>AI Dev Productivity & Reliability (Phase 1)</title>
+</head>
+
+<body style="font-family: Arial; max-width: 980px; margin: 20px auto;">
+  <h2>AI Dev Productivity & Reliability Platform (Phase 1)</h2>
+
+  <p>
+    Interactive demo: click actions to simulate developer workflow.
+    The dashboard updates metrics + “AI-style” insights.
+  </p>
+
+  <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+    <button onclick="act('write_code')">Write Code</button>
+    <button onclick="act('commit_code')">Commit Code</button>
+    <button onclick="act('fix_bug')">Fix Bug</button>
+    <button onclick="act('miss_deadline')">Miss Deadline</button>
+
+    <label style="margin-left:10px;">
+      Window:
+      <select id="window" onchange="refresh()">
+        <option value="60">60s</option>
+        <option value="300" selected>300s</option>
+        <option value="900">900s</option>
+      </select>
+    </label>
+
+    <button onclick="refresh()">Refresh</button>
+    <span id="status" style="font-size: 12px; opacity: 0.8;"></span>
+  </div>
+
+  <div id="cards" style="display:flex; gap:12px; margin:14px 0; flex-wrap:wrap;"></div>
+
+  <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px;">
+    <div style="border:1px solid #ddd; border-radius:12px; padding:12px;">
+      <h3 style="margin:0 0 8px 0;">AI Insights</h3>
+      <ul id="insights" style="margin:0; padding-left:18px;"></ul>
+    </div>
+
+    <div style="border:1px solid #ddd; border-radius:12px; padding:12px;">
+      <h3 style="margin:0 0 8px 0;">Raw JSON</h3>
+      <pre id="out" style="background:#f6f6f6; padding:10px; border-radius:8px; overflow:auto;">Loading…</pre>
+    </div>
+  </div>
+
+<script>
+function card(title, value) {
+  return `
+    <div style="padding:10px 12px; border:1px solid #ddd; border-radius:12px; min-width:150px;">
+      <div style="font-size:12px; opacity:.75">${title}</div>
+      <div style="font-size:18px; font-weight:700">${value}</div>
+    </div>
+  `;
+}
+
+function pct(x) { return (x * 100).toFixed(2) + "%"; }
+function ms(x) { return x.toFixed(2) + " ms"; }
+function num(x) { return x.toFixed(2); }
+
+async function act(action) {
+  setStatus("Running: " + action + " ...");
+  try {
+    await fetch(`/api/action?action=${encodeURIComponent(action)}`, { method: "POST" });
+  } catch (e) {
+    setStatus("Action failed: " + e);
+    return;
+  }
+  await refresh();
+}
+
+function setStatus(msg) {
+  document.getElementById("status").innerText = msg;
+}
+
+async function refresh() {
+  const w = document.getElementById("window").value;
+  setStatus("Refreshing...");
+  try {
+    const res = await fetch(`/api/dashboard?window_sec=${encodeURIComponent(w)}&cb=${Date.now()}`);
+    if (!res.ok) {
+      document.getElementById("out").innerText = "Error: " + res.status;
+      setStatus("Refresh failed");
+      return;
+    }
+    const data = await res.json();
+
+    const s = data.summary;
+    const scores = data.scores;
+
+    document.getElementById("cards").innerHTML =
+      card("Productivity score", scores.productivity_score) +
+      card("Reliability score", scores.reliability_score) +
+      card("Actions", s.actions) +
+      card("Failure rate", pct(s.error_rate)) +
+      card("Avg duration", ms(s.avg_duration_ms)) +
+      card("P95 duration", ms(s.p95_duration_ms)) +
+      card("Throughput", num(s.throughput_rpm) + " rpm");
+
+    const ul = document.getElementById("insights");
+    ul.innerHTML = "";
+    (data.insights || []).forEach(msg => {
+      const li = document.createElement("li");
+      li.innerText = msg;
+      ul.appendChild(li);
+    });
+
+    document.getElementById("out").innerText = JSON.stringify(data, null, 2);
+    setStatus("Updated: " + new Date().toLocaleTimeString());
+  } catch (e) {
+    setStatus("Backend unreachable");
+    document.getElementById("out").innerText = "Error: " + e;
+  }
+}
+
+refresh();
+</script>
+</body>
+</html>
